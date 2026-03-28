@@ -1,0 +1,89 @@
+# Siva Job Bot - Main Configuration
+# ===================================
+
+# Personal Info
+personal:
+  name: "Siva"
+  email: ""
+  phone: ""
+  location: "Dallas-Fort Worth, TX"
+  linkedin_url: ""
+  github_url: ""
+  website: ""
+
+# Job Search Preferences
+search:
+  keywords:
+    include: ["software engineer", "developer", "python", "full stack"]
+    exclude: ["senior staff", "principal", "director", "VP", "lead architect"]
+  locations: ["Dallas, TX", "Remote"]
+  remote_only: false
+  experience_levels: ["entry", "mid", "senior"]
+  salary_min: 80000
+  posted_within_hours: 24
+  job_types: ["full_time", "contract"]
+  companies:
+    blacklist: []
+    whitelist: []
+  title_blacklist: []
+  description_bad_words: ["US Citizen only", "security clearance required"]
+
+# Platforms
+platforms:
+  linkedin:
+    enabled: true
+    easy_apply_only: true
+    username: ""
+    password: ""
+  indeed:
+    enabled: false
+  greenhouse:
+    enabled: false
+
+# AI Settings - DeepSeek Only
+ai:
+  deepseek_api_key: ""  # Get from https://platform.deepseek.com
+  deepseek_base_url: "https://api.deepseek.com/v1"
+  models:
+    scoring: "deepseek-chat"
+    form_filling: "deepseek-chat"
+    resume: "deepseek-chat"
+    cover_letter: "deepseek-chat"
+    reasoning: "deepseek-reasoner"
+  temperature: 0.3
+  max_retries: 3
+  cache_responses: true
+  resume_tailoring: true
+  cover_letter: true
+  job_scoring_threshold: 0.6
+
+# Safety & Anti-Detection
+safety:
+  max_applications_per_day: 50
+  delay_between_apps_seconds: [30, 90]
+  session_break_after: 15
+  session_break_minutes: [5, 15]
+  active_hours: ["08:00", "22:00"]
+  dry_run: false
+  pause_before_submit: false
+  conservative_mode: true
+
+# Notifications
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  email:
+    enabled: false
+    smtp_server: ""
+    smtp_port: 587
+    sender_email: ""
+    sender_password: ""
+    recipient_email: ""
+    daily_digest: true
+
+# Database
+database:
+  path: "data/applications.db"
+  export_csv: true

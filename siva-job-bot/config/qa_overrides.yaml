@@ -1,0 +1,43 @@
+# Manual Q&A Overrides
+# These answers take priority over AI-generated ones.
+# Format: question_pattern: answer
+
+overrides:
+  # Work authorization
+  "authorized to work in the united states": "Yes"
+  "require sponsorship": "No"
+  "visa sponsorship": "No"
+
+  # Experience
+  "years of experience": "5"
+  "years of professional experience": "5"
+
+  # Availability
+  "start date": "Immediately"
+  "notice period": "2 weeks"
+  "available to start": "Immediately"
+
+  # Work preferences
+  "willing to relocate": "Yes"
+  "open to remote": "Yes"
+  "work on-site": "Yes"
+  "willing to travel": "Yes"
+
+  # Demographics (optional - can decline)
+  "gender": "Decline to answer"
+  "race": "Decline to answer"
+  "ethnicity": "Decline to answer"
+  "veteran status": "I am not a protected veteran"
+  "disability": "I do not wish to answer"
+
+  # Salary
+  "desired salary": "80000"
+  "salary expectations": "80000"
+  "expected compensation": "80000"
+
+  # Common
+  "how did you hear about": "LinkedIn"
+  "linkedin profile": ""
+  "github": ""
+  "portfolio": ""
+  "website": ""
