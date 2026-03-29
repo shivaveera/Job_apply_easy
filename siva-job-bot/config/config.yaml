@@ -37,8 +37,32 @@ platforms:
     password: ""
   indeed:
     enabled: false
+    username: ""
+    password: ""
   greenhouse:
     enabled: false
+  lever:
+    enabled: false
+  workday:
+    enabled: false
+  smartrecruiters:
+    enabled: false
+  icims:
+    enabled: false
+  taleo:
+    enabled: false
+  adp:
+    enabled: false
+  ashby:
+    enabled: false
+
+# Direct Application URLs (auto-detects ATS platform)
+# Add career page URLs here for direct application
+application_urls: []
+  # - "https://boards.greenhouse.io/company/jobs/12345"
+  # - "https://jobs.lever.co/company/job-id"
+  # - "https://company.wd5.myworkdayjobs.com/en-US/careers/job/title/JR-12345"
+  # - "https://jobs.smartrecruiters.com/company/job-id"
 
 # AI Settings - DeepSeek Only
 ai:

@@ -1,7 +1,8 @@
 """Main orchestrator for the Siva Job Bot.
 
 Coordinates all components: config loading, browser management,
-AI client initialization, platform automation, and tracking.
+AI client initialization, platform automation, tracking, and
+multi-ATS platform routing.
 """
 
 import sys
@@ -17,8 +18,19 @@ from src.ai.form_filler import FormFiller
 from src.ai.job_scorer import JobScorer
 from src.ai.resume_gen import ResumeGenerator
 from src.browser.driver import BrowserDriver
-from src.platforms.base import Job
+from src.platforms.adp import ADPPlatform
+from src.platforms.ashby import AshbyPlatform
+from src.platforms.ats_detector import detect_ats, detect_ats_from_driver, get_platform_display_name
+from src.platforms.base import BasePlatform, Job
+from src.platforms.greenhouse import GreenhousePlatform
+from src.platforms.icims import ICIMSPlatform
+from src.platforms.indeed import IndeedPlatform
+from src.platforms.lever import LeverPlatform
 from src.platforms.linkedin import LinkedInPlatform
+from src.platforms.smartrecruiters import SmartRecruitersPlatform
+from src.platforms.taleo import TaleoPlatform
+from src.platforms.universal import UniversalFormFiller
+from src.platforms.workday import WorkdayPlatform
 from src.tracking.dashboard import print_dashboard, print_session_summary
 from src.tracking.database import ApplicationDatabase
 from src.utils.humanizer import (
@@ -227,6 +239,9 @@ class JobBot:
             # Run platform-specific automation
             self._run_linkedin()
 
+            # Run multi-ATS URL-based applications
+            self._run_url_applications()
+
         except KeyboardInterrupt:
             log.info("Bot stopped by user")
         except Exception as e:
@@ -406,6 +421,122 @@ class JobBot:
                 session_break(break_range[0], break_range[1])
 
         platform.close()
+
+    def _get_platform_for_ats(self, ats_key: str) -> Optional[BasePlatform]:
+        """Get the platform implementation for a detected ATS.
+
+        Routes to the correct platform module based on ATS detection.
+        Falls back to UniversalFormFiller for unknown platforms.
+        """
+        personal = self.config.get("personal", {})
+
+        platform_map = {
+            "greenhouse": lambda: GreenhousePlatform(self.browser, self.form_filler, personal),
+            "lever": lambda: LeverPlatform(self.browser, self.form_filler, personal),
+            "workday": lambda: WorkdayPlatform(self.browser, self.form_filler, personal),
+            "indeed": lambda: IndeedPlatform(self.browser, self.form_filler, personal),
+            "smartrecruiters": lambda: SmartRecruitersPlatform(self.browser, self.form_filler, personal),
+            "icims": lambda: ICIMSPlatform(self.browser, self.form_filler, personal),
+            "taleo": lambda: TaleoPlatform(self.browser, self.form_filler, personal),
+            "adp": lambda: ADPPlatform(self.browser, self.form_filler, personal),
+            "ashby": lambda: AshbyPlatform(self.browser, self.form_filler, personal),
+        }
+
+        if ats_key in platform_map:
+            return platform_map[ats_key]()
+
+        # Fallback: universal form filler
+        return UniversalFormFiller(self.browser, self.form_filler, personal)
+
+    def _run_url_applications(self) -> None:
+        """Apply to jobs from a list of URLs with automatic ATS detection.
+
+        Reads URLs from config 'application_urls' list. For each URL:
+        1. Detect the ATS platform
+        2. Route to the correct platform module
+        3. Fill and submit the application
+        """
+        urls = self.config.get("application_urls", [])
+        if not urls:
+            return
+
+        log.info(f"Processing {len(urls)} application URLs...")
+        safety = self.config["safety"]
+        is_dry_run = safety.get("dry_run", False)
+        max_daily = safety.get("max_applications_per_day", 50)
+
+        for url in urls:
+            # Check daily limit
+            today_count = self.db.get_today_count()
+            if today_count >= max_daily:
+                log.info(f"Daily limit reached ({max_daily})")
+                break
+
+            # Detect ATS
+            ats_key = detect_ats(url)
+            ats_name = get_platform_display_name(ats_key)
+            log.info(f"Detected ATS: {ats_name} for {url}")
+
+            # If detection was inconclusive, try with page source
+            if ats_key == "unknown":
+                self.browser.get(url)
+                human_delay(2.0, 4.0)
+                ats_key = detect_ats_from_driver(self.browser.driver)
+                ats_name = get_platform_display_name(ats_key)
+                if ats_key != "unknown":
+                    log.info(f"ATS re-detected via DOM: {ats_name}")
+
+            job = Job(
+                job_id=url,
+                title=f"Application at {ats_name}",
+                company=ats_name,
+                url=url,
+                platform=ats_key,
+            )
+
+            if self.db.is_already_applied(job.job_id):
+                log.debug(f"Already applied: {url}")
+                continue
+
+            if is_dry_run:
+                log.info(f"[DRY RUN] Would apply via {ats_name}: {url}")
+                self.db.save_application(
+                    job_id=job.job_id, job_title=job.title,
+                    company=job.company, location="", job_url=url,
+                    status="dry_run",
+                )
+                self.applied += 1
+                continue
+
+            platform = self._get_platform_for_ats(ats_key)
+
+            try:
+                success = platform.apply_to_job(job)
+                status = "applied" if success else "failed"
+                self.db.save_application(
+                    job_id=job.job_id, job_title=job.title,
+                    company=job.company, location="", job_url=url,
+                    status=status,
+                )
+                if success:
+                    self.applied += 1
+                    if self.notifier:
+                        self.notifier.notify_applied(job.title, job.company, None)
+                else:
+                    self.failed += 1
+            except Exception as e:
+                log.error(f"URL application failed for {url}: {e}")
+                self.failed += 1
+
+            # Delay between applications
+            delay_range = safety.get("delay_between_apps_seconds", [30, 90])
+            human_delay(delay_range[0], delay_range[1])
+
+            # Session break check
+            break_after = safety.get("session_break_after", 15)
+            if should_take_break(self.applied, break_after):
+                break_range = safety.get("session_break_minutes", [5, 15])
+                session_break(break_range[0], break_range[1])
 
     def _cleanup(self, start_time: float) -> None:
         """Clean up resources and show session summary."""

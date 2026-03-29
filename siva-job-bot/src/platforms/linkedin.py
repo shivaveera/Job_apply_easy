@@ -443,7 +443,10 @@ class LinkedInPlatform(BasePlatform):
         selectors = [
             "button.jobs-apply-button",
             "button[aria-label*='Easy Apply']",
+            "button[aria-label*='easy apply']",
             ".jobs-s-apply button",
+            ".jobs-apply-button--top-card button",
+            "button.jobs-apply-button--top-card",
         ]
 
         for selector in selectors:
@@ -518,7 +521,9 @@ class LinkedInPlatform(BasePlatform):
     def _handle_uploads(self, job: Job) -> None:
         """Handle file upload fields (resume, cover letter)."""
         upload_inputs = self.browser.find_elements(
-            By.CSS_SELECTOR, "input[type='file']", timeout=2
+            By.CSS_SELECTOR,
+            "input[type='file'], input.jobs-document-upload-file-input",
+            timeout=2,
         )
         for upload in upload_inputs:
             try:
@@ -536,6 +541,7 @@ class LinkedInPlatform(BasePlatform):
         """Fill text input fields using AI form filler."""
         inputs = self.browser.find_elements(
             By.CSS_SELECTOR,
+            "input.artdeco-text-input--input, "
             "input[type='text'], input[type='tel'], input[type='number'], input[type='email']",
             timeout=2,
         )
@@ -611,19 +617,26 @@ class LinkedInPlatform(BasePlatform):
         """Fill radio button groups using AI form filler."""
         fieldsets = self.browser.find_elements(
             By.CSS_SELECTOR,
-            "fieldset[data-test-form-builder-radio-button-form-component]",
+            "fieldset[data-test-form-builder-radio-button-form-component], "
+            "fieldset[data-test-form-builder-radio-button]",
             timeout=2,
         )
 
         for fieldset in fieldsets:
             try:
-                legend = fieldset.find_element(By.CSS_SELECTOR, "legend, span.fb-dash-form-element__label")
+                legend = fieldset.find_element(
+                    By.CSS_SELECTOR,
+                    "legend, span.fb-dash-form-element__label, "
+                    "span.t-14.t-bold"
+                )
                 question = legend.text.strip()
                 if not question:
                     continue
 
                 options_els = fieldset.find_elements(
-                    By.CSS_SELECTOR, "label[data-test-text-selectable-option__label]"
+                    By.CSS_SELECTOR,
+                    "label[data-test-text-selectable-option__label], "
+                    "label.fb-text-selectable__option"
                 )
                 options = [opt.text.strip() for opt in options_els if opt.text.strip()]
 
