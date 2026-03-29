@@ -8,9 +8,9 @@ overrides:
   "require sponsorship": "No"
   "visa sponsorship": "No"
 
-  # Experience
-  "years of experience": "5"
-  "years of professional experience": "5"
+  # Experience (must match answer_profile.yaml experience_years.total)
+  "years of experience": "3"
+  "years of professional experience": "3"
 
   # Availability
   "start date": "Immediately"

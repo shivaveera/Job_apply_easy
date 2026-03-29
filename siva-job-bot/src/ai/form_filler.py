@@ -145,6 +145,7 @@ class FormFiller:
 
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(db_path)
+        self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS qa_cache (
                 question_hash TEXT PRIMARY KEY,

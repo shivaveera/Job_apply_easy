@@ -51,6 +51,7 @@ class DeepSeekClient:
         if cache_enabled:
             Path(cache_db_path).parent.mkdir(parents=True, exist_ok=True)
             self._cache_db = sqlite3.connect(cache_db_path)
+            self._cache_db.execute("PRAGMA journal_mode=WAL")
             self._init_cache_table()
         else:
             self._cache_db = None

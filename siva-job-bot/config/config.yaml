@@ -5,19 +5,19 @@
 personal:
   name: "Siva"
   first_name: "Siva"
-  last_name: ""
-  email: ""
-  phone: ""
+  last_name: ""           # REQUIRED: Your last name
+  email: ""               # REQUIRED: Your email address
+  phone: ""               # REQUIRED: Your phone number (e.g., "+1-XXX-XXX-XXXX")
   location: "Dallas-Fort Worth, TX"
   city: "Dallas"
   state: "TX"
-  zip_code: ""
+  zip_code: ""            # REQUIRED: Your zip code
   country: "United States"
-  linkedin_url: ""
-  github_url: ""
-  website: ""
+  linkedin_url: ""        # REQUIRED: Your LinkedIn profile URL
+  github_url: ""          # Your GitHub profile URL
+  website: ""             # Your portfolio/website URL
   current_company: ""
-  resume_path: ""  # Path to your resume PDF (e.g., "data/resume.pdf")
+  resume_path: ""         # REQUIRED: Path to your resume PDF (e.g., "data/resume.pdf")
 
 # Job Search Preferences
 search:

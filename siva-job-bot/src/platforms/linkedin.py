@@ -18,7 +18,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from src.ai.form_filler import FormFiller
+from src.browser.captcha import CaptchaSolver
 from src.browser.driver import BrowserDriver
+from src.browser.file_upload import upload_resume, upload_cover_letter
 from src.platforms.base import BasePlatform, Job
 from src.utils.humanizer import human_delay, random_scroll, session_break
 from src.utils.logger import log
@@ -66,9 +68,11 @@ class LinkedInPlatform(BasePlatform):
         self,
         browser: BrowserDriver,
         form_filler: Optional[FormFiller] = None,
+        captcha_solver: Optional[CaptchaSolver] = None,
     ):
         self.browser = browser
         self.form_filler = form_filler
+        self.captcha_solver = captcha_solver
         self._applied_ids: set[str] = set()
 
     def login(self, username: str, password: str) -> bool:
@@ -105,11 +109,12 @@ class LinkedInPlatform(BasePlatform):
 
             # Handle security verification if triggered
             if "checkpoint" in self.browser.current_url():
-                log.warning(
-                    "LinkedIn security challenge detected. "
-                    "Please complete verification manually (5 minute timeout)..."
-                )
-                self.browser.wait_for_url_contains("/feed/", timeout=300)
+                log.warning("LinkedIn security challenge detected.")
+                if self.captcha_solver:
+                    self.captcha_solver.solve(self.browser.driver, "linkedin_checkpoint")
+                else:
+                    log.warning("No CAPTCHA solver - waiting for manual solve (5 min timeout)...")
+                    self.browser.wait_for_url_contains("/feed/", timeout=300)
 
             if self.is_logged_in():
                 log.info("LinkedIn login successful")
@@ -402,11 +407,14 @@ class LinkedInPlatform(BasePlatform):
 
         return False
 
-    def apply_to_job(self, job: Job) -> bool:
+    def apply_to_job(self, job: Job, resume_path: str = "", cover_letter_path: str = "") -> bool:
         """Apply to a LinkedIn Easy Apply job.
 
         Handles the multi-step application form with AI-powered form filling.
         """
+        self._current_resume_path = resume_path
+        self._current_cover_letter_path = cover_letter_path
+
         try:
             # Navigate to job if not already there
             if job.job_id not in self.browser.current_url():
@@ -471,6 +479,14 @@ class LinkedInPlatform(BasePlatform):
         for step in range(max_steps):
             human_delay(1.0, 2.0)
 
+            # Check for CAPTCHA during form steps
+            if self.captcha_solver:
+                captcha_type = self.captcha_solver.detect_captcha(self.browser.driver)
+                if captcha_type:
+                    log.info(f"CAPTCHA detected during form step {step + 1}")
+                    self.captcha_solver.solve(self.browser.driver, captcha_type)
+                    human_delay(1.0, 2.0)
+
             # Check for submit button (final step)
             if self._try_submit():
                 return True
@@ -530,11 +546,19 @@ class LinkedInPlatform(BasePlatform):
                 label = self._get_upload_label(upload)
                 label_lower = label.lower()
                 if "resume" in label_lower or "cv" in label_lower:
-                    log.debug(f"Resume upload detected: {label}")
-                    # Upload will be handled by the caller with resume path
+                    if getattr(self, '_current_resume_path', '') and self._current_resume_path:
+                        log.info(f"Uploading resume: {self._current_resume_path}")
+                        upload_resume(self.browser.driver, "linkedin", self._current_resume_path)
+                    else:
+                        log.debug(f"Resume upload detected but no file path provided: {label}")
                 elif "cover" in label_lower:
-                    log.debug(f"Cover letter upload detected: {label}")
-            except Exception:
+                    if getattr(self, '_current_cover_letter_path', '') and self._current_cover_letter_path:
+                        log.info(f"Uploading cover letter: {self._current_cover_letter_path}")
+                        upload_cover_letter(self.browser.driver, "linkedin", self._current_cover_letter_path)
+                    else:
+                        log.debug(f"Cover letter upload detected but no file path provided: {label}")
+            except Exception as e:
+                log.debug(f"Upload error: {e}")
                 continue
 
     def _fill_text_inputs(self, job: Job) -> None:

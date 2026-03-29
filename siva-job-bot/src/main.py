@@ -202,6 +202,15 @@ class JobBot:
         # Session checkpoint
         self.checkpoint = SessionCheckpoint()
 
+        # Auto-detect resume path if not set
+        resume_cfg = self.config["personal"].get("resume_path", "")
+        if not resume_cfg:
+            for candidate in ["data/resume.pdf", "data/resume.docx", "config/resume.pdf", "resume.pdf"]:
+                if Path(candidate).exists():
+                    self.config["personal"]["resume_path"] = candidate
+                    log.info(f"Auto-detected resume: {candidate}")
+                    break
+
         # Browser
         safety = self.config["safety"]
         proxy = self.config.get("proxy", {}).get("url", "")
@@ -302,6 +311,7 @@ class JobBot:
         platform = LinkedInPlatform(
             browser=self.browser,
             form_filler=self.form_filler,
+            captcha_solver=self.captcha_solver,
         )
 
         # Login
@@ -342,6 +352,11 @@ class JobBot:
             if self.db.is_already_applied(job.job_id):
                 self.skipped += 1
                 continue
+
+            # Check rate limiter
+            if self.rate_limiter and not self.rate_limiter.can_apply("linkedin"):
+                log.info("Rate limit reached for LinkedIn, stopping applications")
+                break
 
             # AI scoring
             if self.job_scorer and job.description:
@@ -417,7 +432,18 @@ class JobBot:
                         f"Press Enter to continue or Ctrl+C to skip..."
                     )
 
-                success = platform.apply_to_job(job)
+                # Mark processing in checkpoint
+                if self.checkpoint:
+                    self.checkpoint.mark_processing(job.url, job.job_id, "linkedin")
+
+                success = platform.apply_to_job(job, resume_path=resume_path, cover_letter_path=cover_letter_path)
+
+                # Verify submission success
+                if success:
+                    verified = verify_submission_success(self.browser.driver, "linkedin")
+                    if verified:
+                        take_screenshot(self.browser.driver, job.job_id, "success")
+                    success = verified or success  # Trust platform if verify is inconclusive
 
                 if success:
                     app_id = self.db.save_application(
@@ -434,6 +460,10 @@ class JobBot:
                         job_description=job.description,
                     )
                     self.applied += 1
+                    if self.checkpoint:
+                        self.checkpoint.mark_applied(job.url)
+                    if self.rate_limiter:
+                        self.rate_limiter.record_application("linkedin")
 
                     if self.notifier:
                         self.notifier.notify_applied(
@@ -450,10 +480,16 @@ class JobBot:
                         job_description=job.description,
                     )
                     self.failed += 1
+                    if self.checkpoint:
+                        self.checkpoint.mark_failed(job.url)
+                    take_screenshot(self.browser.driver, job.job_id, "failed")
 
-            # Human-like delay between applications
-            delay_range = safety.get("delay_between_apps_seconds", [30, 90])
-            human_delay(delay_range[0], delay_range[1])
+            # Rate-limited delay between applications
+            if self.rate_limiter:
+                self.rate_limiter.wait_between_applications("linkedin")
+            else:
+                delay_range = safety.get("delay_between_apps_seconds", [30, 90])
+                human_delay(delay_range[0], delay_range[1])
 
             # Session break
             break_after = safety.get("session_break_after", 15)
@@ -523,9 +559,10 @@ class JobBot:
                 continue
 
             platform = self._get_platform_for_ats(job.platform)
+            resume_path = self.config["personal"].get("resume_path", "")
             try:
                 self.checkpoint.mark_processing(job.url, job.job_id, job.platform)
-                success = platform.apply_to_job(job)
+                success = platform.apply_to_job(job, resume_path=resume_path)
 
                 # Verify submission
                 if success:
@@ -567,16 +604,17 @@ class JobBot:
         """
         personal = self.config.get("personal", {})
 
+        captcha = self.captcha_solver
         platform_map = {
-            "greenhouse": lambda: GreenhousePlatform(self.browser, self.form_filler, personal),
-            "lever": lambda: LeverPlatform(self.browser, self.form_filler, personal),
-            "workday": lambda: WorkdayPlatform(self.browser, self.form_filler, personal),
-            "indeed": lambda: IndeedPlatform(self.browser, self.form_filler, personal),
-            "smartrecruiters": lambda: SmartRecruitersPlatform(self.browser, self.form_filler, personal),
-            "icims": lambda: ICIMSPlatform(self.browser, self.form_filler, personal),
-            "taleo": lambda: TaleoPlatform(self.browser, self.form_filler, personal),
-            "adp": lambda: ADPPlatform(self.browser, self.form_filler, personal),
-            "ashby": lambda: AshbyPlatform(self.browser, self.form_filler, personal),
+            "greenhouse": lambda: GreenhousePlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "lever": lambda: LeverPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "workday": lambda: WorkdayPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "indeed": lambda: IndeedPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "smartrecruiters": lambda: SmartRecruitersPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "icims": lambda: ICIMSPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "taleo": lambda: TaleoPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "adp": lambda: ADPPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
+            "ashby": lambda: AshbyPlatform(self.browser, self.form_filler, personal, captcha_solver=captcha),
         }
 
         if ats_key in platform_map:
@@ -645,10 +683,29 @@ class JobBot:
                 self.applied += 1
                 continue
 
+            # Rate limiter check
+            if self.rate_limiter and not self.rate_limiter.can_apply(ats_key):
+                log.info(f"Rate limit reached for {ats_name}, skipping")
+                continue
+
             platform = self._get_platform_for_ats(ats_key)
 
+            # Get resume path from config
+            resume_path = self.config["personal"].get("resume_path", "")
+
             try:
-                success = platform.apply_to_job(job)
+                if self.checkpoint:
+                    self.checkpoint.mark_processing(url, url, ats_key)
+
+                success = platform.apply_to_job(job, resume_path=resume_path)
+
+                # Verify submission
+                if success:
+                    verified = verify_submission_success(self.browser.driver, ats_key)
+                    if verified:
+                        take_screenshot(self.browser.driver, job.job_id, "success")
+                    success = verified or success
+
                 status = "applied" if success else "failed"
                 self.db.save_application(
                     job_id=job.job_id, job_title=job.title,
@@ -657,17 +714,29 @@ class JobBot:
                 )
                 if success:
                     self.applied += 1
+                    if self.checkpoint:
+                        self.checkpoint.mark_applied(url)
+                    if self.rate_limiter:
+                        self.rate_limiter.record_application(ats_key)
                     if self.notifier:
                         self.notifier.notify_applied(job.title, job.company, None)
                 else:
                     self.failed += 1
+                    if self.checkpoint:
+                        self.checkpoint.mark_failed(url)
+                    take_screenshot(self.browser.driver, job.job_id, "failed")
             except Exception as e:
                 log.error(f"URL application failed for {url}: {e}")
                 self.failed += 1
+                if self.checkpoint:
+                    self.checkpoint.mark_failed(url, str(e))
 
-            # Delay between applications
-            delay_range = safety.get("delay_between_apps_seconds", [30, 90])
-            human_delay(delay_range[0], delay_range[1])
+            # Rate-limited delay
+            if self.rate_limiter:
+                self.rate_limiter.wait_between_applications(ats_key)
+            else:
+                delay_range = safety.get("delay_between_apps_seconds", [30, 90])
+                human_delay(delay_range[0], delay_range[1])
 
             # Session break check
             break_after = safety.get("session_break_after", 15)

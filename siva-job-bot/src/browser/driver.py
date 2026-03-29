@@ -21,6 +21,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from src.browser.stealth import (
     apply_stealth,
     get_stealth_chrome_options,
+    inject_fingerprint_evasion_cdp,
     inject_stealth_scripts,
 )
 from src.utils.humanizer import human_click_delay, human_delay, random_scroll
@@ -76,7 +77,8 @@ class BrowserDriver:
 
         # Apply stealth patches
         apply_stealth(self.driver)
-        inject_stealth_scripts(self.driver)
+        # Use CDP injection (runs before page JS) instead of runtime injection
+        inject_fingerprint_evasion_cdp(self.driver)
 
         # Set page load timeout
         self.driver.set_page_load_timeout(30)
@@ -96,7 +98,6 @@ class BrowserDriver:
         """Navigate to URL with human-like delay."""
         self.driver.get(url)
         human_delay(1.0, 3.0)
-        inject_stealth_scripts(self.driver)
 
     def find_element(self, by: By, value: str, timeout: float = 10):
         """Find element with explicit wait."""

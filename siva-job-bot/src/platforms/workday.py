@@ -87,10 +87,12 @@ class WorkdayPlatform(BasePlatform):
         browser: BrowserDriver,
         form_filler: Optional[FormFiller] = None,
         personal_info: dict = None,
+        captcha_solver=None,
     ):
         self.browser = browser
         self.form_filler = form_filler
         self.personal = personal_info or {}
+        self.captcha_solver = captcha_solver
 
     def login(self, username: str, password: str) -> bool:
         """Login or create account on Workday career site."""
@@ -230,29 +232,107 @@ class WorkdayPlatform(BasePlatform):
         except Exception:
             log.debug("No Workday resume upload field on this page")
 
-    def _fill_work_experience(self) -> None:
-        """Fill work experience section if present."""
-        # Skip if not on this page
+    def _set_workday_field(self, field_key: str, value: str) -> None:
+        """Set a Workday form field by its selector key."""
+        selector = WORKDAY_SELECTORS.get(field_key, "")
+        if not selector or not value:
+            return
         try:
-            self.browser.driver.find_element(
+            el = self.browser.driver.find_element(By.CSS_SELECTOR, selector)
+            if el.is_displayed():
+                self.browser.set_react_value(el, value)
+                human_delay(0.2, 0.5)
+        except Exception:
+            pass
+
+    def _fill_work_experience(self) -> None:
+        """Fill work experience section if present using AI form filler."""
+        try:
+            add_btn = self.browser.driver.find_element(
                 By.CSS_SELECTOR, WORKDAY_SELECTORS["add_work_experience"]
             )
         except Exception:
             return
 
-        # Work experience is complex - use form filler for custom questions
-        log.debug("Work experience section detected on Workday form")
+        # Check if work experience already exists
+        existing = self.browser.driver.find_elements(
+            By.CSS_SELECTOR, WORKDAY_SELECTORS["job_title"]
+        )
+        if existing and any(el.get_attribute("value") for el in existing):
+            log.debug("Work experience already populated, skipping")
+            return
+
+        if not self.form_filler:
+            log.debug("No form filler available for work experience")
+            return
+
+        try:
+            self.browser.click(add_btn)
+            human_delay(1.0, 2.0)
+
+            job_title = self.form_filler.answer_text_question("What is your most recent job title?")
+            self._set_workday_field("job_title", job_title)
+
+            company = self.form_filler.answer_text_question("What is your most recent employer/company name?")
+            self._set_workday_field("company_name", company)
+
+            try:
+                desc_el = self.browser.driver.find_element(
+                    By.CSS_SELECTOR, WORKDAY_SELECTORS["role_description"]
+                )
+                if desc_el.is_displayed():
+                    description = self.form_filler.answer_text_question(
+                        "Briefly describe your responsibilities in your most recent role"
+                    )
+                    self.browser.set_react_textarea_value(desc_el, description)
+            except Exception:
+                pass
+
+            log.info("Workday work experience filled")
+        except Exception as e:
+            log.warning(f"Failed to fill work experience: {e}")
 
     def _fill_education(self) -> None:
-        """Fill education section if present."""
+        """Fill education section if present using answer profile data."""
         try:
-            self.browser.driver.find_element(
+            add_btn = self.browser.driver.find_element(
                 By.CSS_SELECTOR, WORKDAY_SELECTORS["add_education"]
             )
         except Exception:
             return
 
-        log.debug("Education section detected on Workday form")
+        # Check if education already exists
+        existing = self.browser.driver.find_elements(
+            By.CSS_SELECTOR, WORKDAY_SELECTORS["school_name"]
+        )
+        if existing and any(el.get_attribute("value") for el in existing):
+            log.debug("Education already populated, skipping")
+            return
+
+        if not self.form_filler:
+            return
+
+        try:
+            self.browser.click(add_btn)
+            human_delay(1.0, 2.0)
+
+            school = self.form_filler.answer_text_question("What school/university did you attend?")
+            self._set_workday_field("school_name", school)
+
+            # Degree dropdown
+            degree = self.form_filler.answer_text_question("What is your highest degree? (e.g., Bachelor's)")
+            self._select_workday_dropdown(WORKDAY_SELECTORS["degree"], degree)
+
+            field_of_study = self.form_filler.answer_text_question("What was your field of study/major?")
+            self._set_workday_field("field_of_study", field_of_study)
+
+            gpa = self.form_filler.answer_text_question("What was your GPA?")
+            if gpa:
+                self._set_workday_field("gpa", gpa)
+
+            log.info("Workday education filled")
+        except Exception as e:
+            log.warning(f"Failed to fill education: {e}")
 
     def _fill_questionnaire(self) -> None:
         """Fill custom questionnaire fields using AI form filler."""

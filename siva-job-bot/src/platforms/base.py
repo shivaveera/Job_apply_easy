@@ -51,11 +51,13 @@ class BasePlatform(ABC):
         """
 
     @abstractmethod
-    def apply_to_job(self, job: Job) -> bool:
+    def apply_to_job(self, job: Job, resume_path: str = "", cover_letter_path: str = "") -> bool:
         """Submit an application for a job.
 
         Args:
             job: The Job to apply to.
+            resume_path: Path to resume file for upload.
+            cover_letter_path: Path to cover letter file for upload.
 
         Returns:
             True if application submitted successfully.

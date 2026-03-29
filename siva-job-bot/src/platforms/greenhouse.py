@@ -47,10 +47,12 @@ class GreenhousePlatform(BasePlatform):
         browser: BrowserDriver,
         form_filler: Optional[FormFiller] = None,
         personal_info: dict = None,
+        captcha_solver=None,
     ):
         self.browser = browser
         self.form_filler = form_filler
         self.personal = personal_info or {}
+        self.captcha_solver = captcha_solver
 
     def login(self, username: str, password: str) -> bool:
         return True  # Greenhouse doesn't require login

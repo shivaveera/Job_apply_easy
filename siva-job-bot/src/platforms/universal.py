@@ -189,10 +189,11 @@ class UniversalFormFiller(BasePlatform):
     Uses heuristic field classification + LLM fallback to fill any web form.
     """
 
-    def __init__(self, browser, form_filler: Optional[FormFiller] = None, personal_info: dict = None):
+    def __init__(self, browser, form_filler: Optional[FormFiller] = None, personal_info: dict = None, captcha_solver=None):
         self.browser = browser
         self.form_filler = form_filler
         self.personal = personal_info or {}
+        self.captcha_solver = captcha_solver
 
     def login(self, username: str, password: str) -> bool:
         return True  # No login needed for career pages

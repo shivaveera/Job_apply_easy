@@ -13,10 +13,11 @@ from src.utils.logger import log
 class TaleoPlatform(BasePlatform):
     """Oracle Taleo ATS application automation (stub)."""
 
-    def __init__(self, browser: BrowserDriver, form_filler: FormFiller = None, personal_info: dict = None):
+    def __init__(self, browser: BrowserDriver, form_filler: FormFiller = None, personal_info: dict = None, captcha_solver=None):
         self.browser = browser
         self.form_filler = form_filler
         self.personal = personal_info or {}
+        self.captcha_solver = captcha_solver
 
     def login(self, username: str, password: str) -> bool:
         log.info("Taleo: basic implementation - login not fully supported")
