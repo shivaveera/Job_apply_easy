@@ -4,12 +4,20 @@
 # Personal Info
 personal:
   name: "Siva"
+  first_name: "Siva"
+  last_name: ""
   email: ""
   phone: ""
   location: "Dallas-Fort Worth, TX"
+  city: "Dallas"
+  state: "TX"
+  zip_code: ""
+  country: "United States"
   linkedin_url: ""
   github_url: ""
   website: ""
+  current_company: ""
+  resume_path: ""  # Path to your resume PDF (e.g., "data/resume.pdf")
 
 # Job Search Preferences
 search:
@@ -57,12 +65,18 @@ platforms:
     enabled: false
 
 # Direct Application URLs (auto-detects ATS platform)
-# Add career page URLs here for direct application
 application_urls: []
   # - "https://boards.greenhouse.io/company/jobs/12345"
   # - "https://jobs.lever.co/company/job-id"
   # - "https://company.wd5.myworkdayjobs.com/en-US/careers/job/title/JR-12345"
-  # - "https://jobs.smartrecruiters.com/company/job-id"
+
+# Company Career Boards (API-based job discovery - no Selenium needed)
+company_boards: []
+  # - platform: greenhouse
+  #   token: "airbnb"           # from boards.greenhouse.io/{token}
+  # - platform: lever
+  #   token: "stripe"           # from jobs.lever.co/{token}
+  #   team: "Engineering"       # optional team filter
 
 # AI Settings - DeepSeek Only
 ai:
@@ -81,14 +95,23 @@ ai:
   cover_letter: true
   job_scoring_threshold: 0.6
 
+# CAPTCHA Solving (optional)
+captcha:
+  capsolver_api_key: ""    # CapSolver (cheapest: $0.60-1.20/1K solves)
+  twocaptcha_api_key: ""   # 2Captcha (most reliable: $2.70-3.50/1K solves)
+
+# Proxy (optional - for IP rotation)
+proxy:
+  url: ""  # e.g., "socks5://user:pass@proxy.example.com:1080"
+
 # Safety & Anti-Detection
 safety:
-  max_applications_per_day: 50
-  delay_between_apps_seconds: [30, 90]
+  max_applications_per_day: 30  # Conservative default (LinkedIn hard limit: 50)
+  delay_between_apps_seconds: [45, 180]
   session_break_after: 15
   session_break_minutes: [5, 15]
   active_hours: ["08:00", "22:00"]
-  dry_run: false
+  dry_run: true  # Start in dry-run mode for safety
   pause_before_submit: false
   conservative_mode: true
 

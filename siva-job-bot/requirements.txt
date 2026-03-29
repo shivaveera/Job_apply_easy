@@ -1,6 +1,7 @@
 # Core
 pyyaml>=6.0
 openai>=1.30.0
+requests>=2.31.0
 
 # Browser Automation
 selenium>=4.15.0
@@ -13,6 +14,10 @@ Levenshtein>=0.25.0
 
 # PDF Generation
 fpdf2>=2.7.0
+
+# CAPTCHA Solving (optional - install what you need)
+# capsolver>=1.0.0       # pip install capsolver (cheapest, AI-based)
+# 2captcha-python>=1.3.0 # pip install 2captcha-python (most documented)
 
 # Notifications (optional)
 # pyTelegramBotAPI>=4.14.0  # Only if using Telegram

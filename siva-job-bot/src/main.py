@@ -3,6 +3,14 @@
 Coordinates all components: config loading, browser management,
 AI client initialization, platform automation, tracking, and
 multi-ATS platform routing.
+
+Enhanced with:
+- CAPTCHA detection and solving
+- Per-platform rate limiting
+- Session checkpointing for crash recovery
+- Resume/cover letter upload integration
+- Form validation and success verification
+- API-based job discovery (Greenhouse, Lever)
 """
 
 import sys
@@ -17,7 +25,14 @@ from src.ai.deepseek_client import DeepSeekClient
 from src.ai.form_filler import FormFiller
 from src.ai.job_scorer import JobScorer
 from src.ai.resume_gen import ResumeGenerator
+from src.browser.captcha import CaptchaSolver
 from src.browser.driver import BrowserDriver
+from src.browser.file_upload import upload_resume, upload_cover_letter
+from src.browser.form_validator import (
+    find_form_errors,
+    take_screenshot,
+    verify_submission_success,
+)
 from src.platforms.adp import ADPPlatform
 from src.platforms.ashby import AshbyPlatform
 from src.platforms.ats_detector import detect_ats, detect_ats_from_driver, get_platform_display_name
@@ -25,6 +40,7 @@ from src.platforms.base import BasePlatform, Job
 from src.platforms.greenhouse import GreenhousePlatform
 from src.platforms.icims import ICIMSPlatform
 from src.platforms.indeed import IndeedPlatform
+from src.platforms.job_discovery import discover_jobs_from_company_boards
 from src.platforms.lever import LeverPlatform
 from src.platforms.linkedin import LinkedInPlatform
 from src.platforms.smartrecruiters import SmartRecruitersPlatform
@@ -41,6 +57,8 @@ from src.utils.humanizer import (
     wait_for_active_hours,
 )
 from src.utils.logger import log
+from src.utils.rate_limiter import RateLimiter
+from src.utils.retry import SessionCheckpoint
 
 
 class JobBot:
@@ -65,6 +83,9 @@ class JobBot:
         self.resume_gen: Optional[ResumeGenerator] = None
         self.cover_letter_gen: Optional[CoverLetterGenerator] = None
         self.notifier = None
+        self.captcha_solver: Optional[CaptchaSolver] = None
+        self.rate_limiter: Optional[RateLimiter] = None
+        self.checkpoint: Optional[SessionCheckpoint] = None
 
         # Session counters
         self.applied = 0
@@ -169,11 +190,28 @@ class JobBot:
         # Notifications
         self._init_notifications()
 
+        # CAPTCHA solver
+        captcha_config = self.config.get("captcha", {})
+        self.captcha_solver = CaptchaSolver(captcha_config)
+        if self.captcha_solver.enabled:
+            log.info("CAPTCHA solver configured")
+
+        # Rate limiter
+        self.rate_limiter = RateLimiter()
+
+        # Session checkpoint
+        self.checkpoint = SessionCheckpoint()
+
         # Browser
         safety = self.config["safety"]
+        proxy = self.config.get("proxy", {}).get("url", "")
+        from src.browser.stealth import get_bot_profile_dir
+        profile_dir = get_bot_profile_dir("default")
+
         self.browser = BrowserDriver(
             headless=False,
             use_profile=True,
+            profile_dir=profile_dir,
             stealth_mode=safety.get("conservative_mode", True),
         )
 
@@ -238,6 +276,9 @@ class JobBot:
 
             # Run platform-specific automation
             self._run_linkedin()
+
+            # Run API-based job discovery (Greenhouse/Lever boards)
+            self._run_board_discovery()
 
             # Run multi-ATS URL-based applications
             self._run_url_applications()
@@ -422,6 +463,102 @@ class JobBot:
 
         platform.close()
 
+    def _run_board_discovery(self) -> None:
+        """Discover and apply to jobs from Greenhouse/Lever company boards.
+
+        Reads company boards from config 'company_boards' list.
+        Uses API-based discovery (no Selenium needed for finding jobs).
+        """
+        boards = self.config.get("company_boards", [])
+        if not boards:
+            return
+
+        search = self.config.get("search", {})
+        keywords = search.get("keywords", {}).get("include", [])
+        locations = search.get("locations", [""])
+        location = locations[0] if locations else ""
+
+        log.info(f"Discovering jobs from {len(boards)} company boards...")
+        discovered_jobs = discover_jobs_from_company_boards(boards, keywords, location)
+
+        if not discovered_jobs:
+            log.info("No jobs discovered from company boards")
+            return
+
+        # Add discovered job URLs to application queue
+        safety = self.config["safety"]
+        is_dry_run = safety.get("dry_run", False)
+        scoring_threshold = self.config["ai"].get("job_scoring_threshold", 0.6)
+
+        for job in discovered_jobs:
+            if self.db.is_already_applied(job.job_id):
+                continue
+
+            # Score if we have AI and description
+            if self.job_scorer and job.description:
+                meets, score_result = self.job_scorer.meets_threshold(
+                    job.title, job.company, job.location,
+                    job.description, scoring_threshold,
+                )
+                if not meets:
+                    self.skipped += 1
+                    continue
+            else:
+                score_result = {"score": None, "reasoning": ""}
+
+            if not self.rate_limiter.can_apply(job.platform):
+                log.info(f"Rate limit reached for {job.platform}, skipping remaining")
+                break
+
+            if is_dry_run:
+                log.info(f"[DRY RUN] Would apply to: {job.title} at {job.company} ({job.platform})")
+                self.db.save_application(
+                    job_id=job.job_id, job_title=job.title,
+                    company=job.company, location=job.location,
+                    job_url=job.url, status="dry_run",
+                    ai_score=score_result.get("score"),
+                    job_description=job.description,
+                )
+                self.applied += 1
+                continue
+
+            platform = self._get_platform_for_ats(job.platform)
+            try:
+                self.checkpoint.mark_processing(job.url, job.job_id, job.platform)
+                success = platform.apply_to_job(job)
+
+                # Verify submission
+                if success:
+                    verified = verify_submission_success(self.browser.driver, job.platform)
+                    if verified:
+                        take_screenshot(self.browser.driver, job.job_id, "success")
+                    success = verified or success  # Trust platform module if verify is inconclusive
+
+                status = "applied" if success else "failed"
+                self.db.save_application(
+                    job_id=job.job_id, job_title=job.title,
+                    company=job.company, location=job.location,
+                    job_url=job.url, status=status,
+                    ai_score=score_result.get("score"),
+                    job_description=job.description,
+                )
+                if success:
+                    self.applied += 1
+                    self.checkpoint.mark_applied(job.url)
+                    self.rate_limiter.record_application(job.platform)
+                    if self.notifier:
+                        self.notifier.notify_applied(job.title, job.company, score_result.get("score"))
+                else:
+                    self.failed += 1
+                    self.checkpoint.mark_failed(job.url)
+
+            except Exception as e:
+                log.error(f"Board application failed: {e}")
+                self.failed += 1
+                self.checkpoint.mark_failed(job.url, str(e))
+
+            self.rate_limiter.wait_between_applications(job.platform)
+
     def _get_platform_for_ats(self, ats_key: str) -> Optional[BasePlatform]:
         """Get the platform implementation for a detected ATS.
 
@@ -579,6 +716,9 @@ class JobBot:
             log.info(f"AI Usage: {usage}")
 
         # Close all resources
+        if self.checkpoint:
+            self.checkpoint.end_session()
+            self.checkpoint.close()
         if self.browser:
             self.browser.close()
         if self.ai_client:
@@ -587,5 +727,11 @@ class JobBot:
             self.form_filler.close()
         if self.db:
             self.db.close()
+
+        # Print rate limiter stats
+        if self.rate_limiter:
+            stats = self.rate_limiter.get_stats()
+            if stats:
+                log.info(f"Rate limiter stats: {stats}")
 
         log.info("Bot shutdown complete")

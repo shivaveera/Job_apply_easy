@@ -1,0 +1,78 @@
+# Answer Profile - Single Source of Truth
+# ========================================
+# Every factual answer the bot gives references this file.
+# LLM-generated answers for factual questions are cross-checked
+# against these values to ensure consistency across applications.
+#
+# Update these with YOUR actual information before running the bot.
+
+# Work Authorization
+work_authorization:
+  authorized_us: "Yes"
+  require_sponsorship: "No"
+  us_citizen: ""           # Yes/No - leave blank if prefer not to answer
+  green_card: ""           # Yes/No
+  work_visa: ""            # H1B/OPT/etc or blank
+
+# Experience (years per skill/technology)
+experience_years:
+  total: "3"
+  python: "3"
+  java: "2"
+  javascript: "3"
+  typescript: "2"
+  react: "2"
+  node: "2"
+  sql: "3"
+  aws: "2"
+  docker: "2"
+  kubernetes: "1"
+  git: "3"
+  linux: "3"
+  machine_learning: "1"
+  ci_cd: "2"
+
+# Education
+education:
+  highest_degree: "Bachelor's"
+  field_of_study: "Computer Science"
+  university: ""
+  gpa: ""
+  graduation_year: ""
+
+# Salary & Compensation
+salary:
+  minimum: "80000"
+  desired: "100000"
+  currency: "USD"
+  negotiable: "Yes"
+
+# Availability
+availability:
+  start_date: "Immediately"
+  notice_period: "2 weeks"
+  willing_to_relocate: "Yes"
+  preferred_work_type: "Remote"  # Remote/Hybrid/Onsite/Any
+  willing_to_travel: "Yes"
+  travel_percentage: "Up to 25%"
+  commute_willing: "Yes"
+
+# Demographics (EEO - all optional, use "Decline" to skip)
+demographics:
+  gender: "Decline to Self Identify"
+  ethnicity: "Decline to Self Identify"
+  veteran_status: "I don't wish to answer"
+  disability_status: "I don't wish to answer"
+
+# Common Yes/No Questions
+common_answers:
+  background_check: "Yes"
+  drug_test: "Yes"
+  non_compete: "No"
+  previously_employed: "No"
+  referred_by_employee: "No"
+  convicted_of_felony: "No"
+  over_18: "Yes"
+
+# How Did You Hear About Us
+source: "LinkedIn"
